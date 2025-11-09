@@ -1,8 +1,18 @@
 import * as THREE from 'three';
 
+const ZONES = {
+    RIGHT: { color: 0xff8888, name: 'Right' },  // +X
+    LEFT: { color: 0x8888ff, name: 'Left' },   // -X
+    TOP: { color: 0x88ff88, name: 'Top' },     // +Y
+    BOTTOM: { color: 0xffff88, name: 'Bottom' }, // -Y
+    FRONT: { color: 0xff88ff, name: 'Front' },  // +Z
+    BACK: { color: 0x88ffff, name: 'Back' }     // -Z
+};
+
 class Gizmo {
     constructor(container) {
         this.container = container;
+        this.indicatorElement = document.getElementById('gizmo-indicator');
         this.scene = new THREE.Scene();
         this.camera = new THREE.PerspectiveCamera(75, 1, 0.1, 1000);
         this.renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
@@ -36,14 +46,30 @@ class Gizmo {
 
         // Outer translucent sphere
         const outerGeometry = new THREE.SphereGeometry(this.outerRadius, 32, 32);
-        const outerMaterial = new THREE.MeshBasicMaterial({
+        const outerMaterial = new THREE.MeshPhongMaterial({
             color: 0xffffff,
-            wireframe: true,
             transparent: true,
-            opacity: 0.2
+            opacity: 0.15,
+            shininess: 50
         });
         this.outerSphere = new THREE.Mesh(outerGeometry, outerMaterial);
         this.gizmoGroup.add(this.outerSphere);
+
+        // Add colored lights for zones
+        const lightIntensity = 2;
+        const lightDistance = 5;
+        const addZoneLight = (color, x, y, z) => {
+            const light = new THREE.PointLight(color, lightIntensity, lightDistance);
+            light.position.set(x, y, z);
+            this.gizmoGroup.add(light);
+        };
+
+        addZoneLight(ZONES.RIGHT.color, this.outerRadius, 0, 0);
+        addZoneLight(ZONES.LEFT.color, -this.outerRadius, 0, 0);
+        addZoneLight(ZONES.TOP.color, 0, this.outerRadius, 0);
+        addZoneLight(ZONES.BOTTOM.color, 0, -this.outerRadius, 0);
+        addZoneLight(ZONES.FRONT.color, 0, 0, this.outerRadius);
+        addZoneLight(ZONES.BACK.color, 0, 0, -this.outerRadius);
 
         // XYZ Axes
         this.axesHelper = new THREE.AxesHelper(2);
@@ -119,7 +145,7 @@ class Gizmo {
             -Math.cos(THREE.MathUtils.degToRad(beta)) * Math.cos(THREE.MathUtils.degToRad(gamma))
         ).normalize();
 
-        this.gravity.copy(gravityVector).multiplyScalar(9.8);
+        this.gravity.copy(gravityVector).multiplyScalar(15); // Increased gravity
     }
 
     updatePhysics() {
@@ -130,6 +156,9 @@ class Gizmo {
 
         // Update position
         this.ballPosition.addScaledVector(this.ballVelocity, deltaTime);
+
+        // Update indicator
+        this.updateIndicator();
 
         // Collision with outer sphere
         const distanceFromCenter = this.ballPosition.length();
@@ -148,6 +177,28 @@ class Gizmo {
         }
 
         this.innerBall.position.copy(this.ballPosition);
+    }
+
+    updateIndicator() {
+        const pos = this.ballPosition;
+        const absX = Math.abs(pos.x);
+        const absY = Math.abs(pos.y);
+        const absZ = Math.abs(pos.z);
+
+        let currentZone;
+
+        if (absX > absY && absX > absZ) {
+            currentZone = pos.x > 0 ? ZONES.RIGHT : ZONES.LEFT;
+        } else if (absY > absX && absY > absZ) {
+            currentZone = pos.y > 0 ? ZONES.TOP : ZONES.BOTTOM;
+        } else {
+            currentZone = pos.z > 0 ? ZONES.FRONT : ZONES.BACK;
+        }
+        
+        const colorHex = '#' + new THREE.Color(currentZone.color).getHexString();
+        if (this.indicatorElement.style.backgroundColor !== colorHex) {
+            this.indicatorElement.style.backgroundColor = colorHex;
+        }
     }
 
     animate() {

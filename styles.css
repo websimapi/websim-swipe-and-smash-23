@@ -136,13 +136,29 @@ h1 {
     transition: opacity 0.2s ease-out, transform 0.2s ease-out, top 0.3s ease, left 0.3s ease, font-size 0.3s ease;
 }
 
-#gizmo-container {
+#gizmo-area {
     position: fixed;
     top: 10px;
     left: 10px;
+    z-index: 300;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+#gizmo-container {
     width: 100px;
     height: 100px;
-    z-index: 300;
+}
+
+#gizmo-indicator {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background-color: #ccc;
+    border: 2px solid white;
+    box-shadow: 0 0 5px rgba(0,0,0,0.3);
+    transition: background-color 0.3s ease;
 }
 
 #gizmo-container canvas {
