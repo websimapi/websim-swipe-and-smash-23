@@ -30,9 +30,7 @@ class Gizmo {
         this.innerRadius = 0.5;
 
         // Orientation properties
-        this.deviceAlphaOffset = 0;
-        this.deviceBetaOffset = 0;
-        this.deviceGammaOffset = 0;
+        this.targetQuaternion = new THREE.Quaternion();
         this.isCalibrated = false;
 
         this.gizmoGroup = new THREE.Group();
@@ -87,69 +85,54 @@ class Gizmo {
     }
 
     calibrateAndStart() {
-        if ('DeviceOrientationEvent' in window && typeof DeviceOrientationEvent.requestPermission === 'function') {
-            DeviceOrientationEvent.requestPermission()
-                .then(permissionState => {
-                    if (permissionState === 'granted') {
-                        this.addOrientationListener();
-                    }
-                })
-                .catch(console.error);
-        } else {
-            this.addOrientationListener();
-        }
-
+        this.addOrientationListener();
         this.animate();
     }
 
     addOrientationListener() {
-        window.addEventListener('deviceorientation', this.handleOrientation.bind(this), true);
+        // Use screen orientation API for snapping
+        try {
+            screen.orientation.addEventListener('change', () => this.handleOrientationChange());
+            this.handleOrientationChange(); // Set initial orientation
+        } catch(e) {
+            console.warn("Screen orientation API not fully supported.", e);
+            // Fallback for older browsers or non-mobile
+            this.targetQuaternion.setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
+        }
     }
 
-    handleOrientation(event) {
-        if (!event.alpha || !event.beta || !event.gamma) return;
+    handleOrientationChange() {
+        const type = screen.orientation.type;
+        const baseRotation = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
+        let angle = 0;
 
-        if (!this.isCalibrated) {
-            // This is now just an initial value, real calibration is on start.
-            // It helps prevent wild jumps before calibration.
-            this.deviceAlphaOffset = event.alpha;
-            this.deviceBetaOffset = event.beta;
-            this.deviceGammaOffset = event.gamma;
+        if (type.startsWith('landscape-primary')) {
+            angle = Math.PI / 2;
+        } else if (type.startsWith('landscape-secondary')) {
+            angle = -Math.PI / 2;
+        } else if (type.startsWith('portrait-secondary')) {
+            angle = Math.PI;
         }
 
-        const alpha = event.alpha; // Compass
-        const beta = event.beta;   // Front-back tilt
-        const gamma = event.gamma; // Left-right tilt
+        const zRotation = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), angle);
+        this.targetQuaternion.copy(baseRotation).multiply(zRotation);
 
-        // Convert degrees to radians
-        const alphaRad = THREE.MathUtils.degToRad(alpha - this.deviceAlphaOffset);
-        const betaRad = THREE.MathUtils.degToRad(beta - this.deviceBetaOffset);
-        const gammaRad = THREE.MathUtils.degToRad(gamma - this.deviceGammaOffset);
-        
-        // Use ZXY order which is common for device orientation
-        const euler = new THREE.Euler(betaRad, gammaRad, alphaRad, 'ZXY');
-        const q = new THREE.Quaternion().setFromEuler(euler);
-
-        // Correct for screen orientation (assuming portrait mode)
-        const screenAdjustment = new THREE.Quaternion().setFromAxisAngle(
-            new THREE.Vector3(1, 0, 0), 
-            -Math.PI / 2
-        );
-        q.multiply(screenAdjustment);
-        this.gizmoGroup.quaternion.copy(q);
-
-        // Update gravity vector based on device orientation
-        const gravityVector = new THREE.Vector3(
-            Math.sin(THREE.MathUtils.degToRad(gamma)),
-            -Math.sin(THREE.MathUtils.degToRad(beta)),
-            -Math.cos(THREE.MathUtils.degToRad(beta)) * Math.cos(THREE.MathUtils.degToRad(gamma))
-        ).normalize();
-
-        this.gravity.copy(gravityVector).multiplyScalar(15); // Increased gravity
+        // Update gravity to point "down" relative to the new screen orientation
+        this.gravity.set(0, -25, 0); // Start with standard down
+        // The gizmo itself is what rotates, so we need to find where "down" is in world space
+        // by applying the inverse of the gizmo's rotation to the world "down" vector.
+        this.gravity.applyQuaternion(this.gizmoGroup.quaternion.clone().invert());
     }
 
     updatePhysics() {
         const deltaTime = Math.min(this.clock.getDelta(), 0.05); // Clamp delta to prevent physics glitches
+
+        // Smoothly rotate gizmo to target orientation
+        if (!this.gizmoGroup.quaternion.equals(this.targetQuaternion)) {
+            this.gizmoGroup.quaternion.slerp(this.targetQuaternion, 0.1);
+            // Re-calculate gravity as we are rotating
+            this.handleOrientationChange(); 
+        }
 
         // Apply gravity
         this.ballVelocity.addScaledVector(this.gravity, deltaTime);
