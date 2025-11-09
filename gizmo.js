@@ -84,36 +84,46 @@ class Gizmo {
         if (!event.alpha || !event.beta || !event.gamma) return;
 
         if (!this.isCalibrated) {
+            // This is now just an initial value, real calibration is on start.
+            // It helps prevent wild jumps before calibration.
             this.deviceAlphaOffset = event.alpha;
             this.deviceBetaOffset = event.beta;
             this.deviceGammaOffset = event.gamma;
-            this.isCalibrated = true;
         }
 
-        const alpha = event.alpha - this.deviceAlphaOffset;
-        const beta = event.beta - this.deviceBetaOffset;
-        const gamma = event.gamma - this.deviceGammaOffset;
+        const alpha = event.alpha; // Compass
+        const beta = event.beta;   // Front-back tilt
+        const gamma = event.gamma; // Left-right tilt
 
         // Convert degrees to radians
-        const alphaRad = THREE.MathUtils.degToRad(alpha);
-        const betaRad = THREE.MathUtils.degToRad(beta);
-        const gammaRad = THREE.MathUtils.degToRad(gamma);
+        const alphaRad = THREE.MathUtils.degToRad(alpha - this.deviceAlphaOffset);
+        const betaRad = THREE.MathUtils.degToRad(beta - this.deviceBetaOffset);
+        const gammaRad = THREE.MathUtils.degToRad(gamma - this.deviceGammaOffset);
+        
+        // Use ZXY order which is common for device orientation
+        const euler = new THREE.Euler(betaRad, gammaRad, alphaRad, 'ZXY');
+        const q = new THREE.Quaternion().setFromEuler(euler);
 
-        // Create Euler object in 'ZXY' order (standard for device orientation)
-        const euler = new THREE.Euler(betaRad, alphaRad, -gammaRad, 'YXZ');
-        this.gizmoGroup.quaternion.setFromEuler(euler);
+        // Correct for screen orientation (assuming portrait mode)
+        const screenAdjustment = new THREE.Quaternion().setFromAxisAngle(
+            new THREE.Vector3(1, 0, 0), 
+            -Math.PI / 2
+        );
+        q.multiply(screenAdjustment);
+        this.gizmoGroup.quaternion.copy(q);
 
         // Update gravity vector based on device orientation
-        // A simple approximation: gravity points "down" relative to the device.
-        // Start with world down vector [0, -1, 0]
-        const downVector = new THREE.Vector3(0, -1, 0);
-        // Rotate it by the inverse of the device's orientation
-        downVector.applyQuaternion(this.gizmoGroup.quaternion.clone().invert());
-        this.gravity.copy(downVector).multiplyScalar(9.8);
+        const gravityVector = new THREE.Vector3(
+            Math.sin(THREE.MathUtils.degToRad(gamma)),
+            -Math.sin(THREE.MathUtils.degToRad(beta)),
+            -Math.cos(THREE.MathUtils.degToRad(beta)) * Math.cos(THREE.MathUtils.degToRad(gamma))
+        ).normalize();
+
+        this.gravity.copy(gravityVector).multiplyScalar(9.8);
     }
 
     updatePhysics() {
-        const deltaTime = this.clock.getDelta();
+        const deltaTime = Math.min(this.clock.getDelta(), 0.05); // Clamp delta to prevent physics glitches
 
         // Apply gravity
         this.ballVelocity.addScaledVector(this.gravity, deltaTime);

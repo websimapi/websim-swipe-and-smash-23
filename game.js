@@ -114,7 +114,35 @@ class Game {
     }
 
     setupUI() {
-        document.getElementById('start-button').addEventListener('click', () => this.startGame());
+        document.getElementById('start-button').addEventListener('click', () => this.startCalibrationSequence());
+    }
+
+    startCalibrationSequence() {
+        const startButton = document.getElementById('start-button');
+        const startContent = document.getElementById('start-content');
+        const calibrationText = document.getElementById('calibration-text');
+
+        // Disable button to prevent multiple clicks
+        startButton.disabled = true;
+        startContent.style.opacity = '0';
+
+        setTimeout(() => {
+            calibrationText.textContent = "Calibrating...";
+            startContent.style.opacity = '1';
+
+            let countdown = 3;
+            calibrationText.textContent = `Calibrating in ${countdown}...`;
+
+            const countdownInterval = setInterval(() => {
+                countdown--;
+                if (countdown > 0) {
+                    calibrationText.textContent = `Calibrating in ${countdown}...`;
+                } else {
+                    clearInterval(countdownInterval);
+                    this.startGame();
+                }
+            }, 1000);
+        }, 300); // wait for fade out
     }
 
     startTimer() {

@@ -201,11 +201,18 @@ h1 {
     justify-content: center;
     align-items: center;
     z-index: 150;
-    border-radius: 10px;
     transition: opacity 0.3s ease-out;
     flex-direction: column;
     padding: 20px;
     box-sizing: border-box;
+}
+
+#start-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.3s ease-out;
 }
 
 #calibration-text {
